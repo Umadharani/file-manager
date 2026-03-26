@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Home - Upload Files</title>
+</head>
+<body>
+
+<h2>Uploaded Files</h2>
+
+<ul>
+    <% files.forEach(file => { %>
+        <li><%= file %></li>
+    <% }) %>
+</ul>
+
+<hr>
+
+<h3>Upload New File</h3>
+
+<form action="/upload" method="POST" enctype="multipart/form-data">
+    <input type="file" name="file" required>
+    <button type="submit">Upload</button>
+</form>
+
+<br>
+<a href="/download">Go to Download Page</a>
+
+</body>
+</html>

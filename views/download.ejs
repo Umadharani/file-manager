@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Download Files</title>
+</head>
+<body>
+
+<h2>Download Files</h2>
+
+<ul>
+    <% files.forEach(file => { %>
+        <li>
+            <%= file %> 
+            <a href="/download/<%= file %>">Download</a>
+        </li>
+    <% }) %>
+</ul>
+
+<br>
+<a href="/home">Back to Home</a>
+
+</body>
+</html>
