@@ -1,93 +1,125 @@
 const express = require("express");
 const multer = require("multer");
+const multerS3 = require("multer-s3");
 const path = require("path");
-const fs = require("fs");
+
+const { 
+    S3Client, 
+    ListObjectsV2Command, 
+    GetObjectCommand 
+} = require("@aws-sdk/client-s3");
+
+const { getSignedUrl } = require("@aws-sdk/s3-request-presigner");
 
 const app = express();
 
 // ==========================
-// Ensure uploads folder exists
-// ==========================
-const uploadDir = path.join(__dirname, "uploads");
-
-if (!fs.existsSync(uploadDir)) {
-    fs.mkdirSync(uploadDir);
-}
-
-// ==========================
-// View engine setup
+// FIX: Views folder path
 // ==========================
 app.set("view engine", "ejs");
-
-// Serve uploaded files statically
-app.use("/uploads", express.static(uploadDir));
+app.set("views", path.join(__dirname, "views"));
 
 // ==========================
-// Multer Storage Config
+// AWS S3 CONFIG
 // ==========================
-const storage = multer.diskStorage({
-    destination: function (req, file, cb) {
-        cb(null, uploadDir);
-    },
-    filename: function (req, file, cb) {
-        const uniqueName = Date.now() + "-" + file.originalname;
-        cb(null, uniqueName);
+const s3 = new S3Client({
+    region: "us-east-1", // change if needed
+    credentials: {
+        accessKeyId: "AKIAYUGFHWKR3YM4DDHR",
+        secretAccessKey: "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"
     }
 });
 
-const upload = multer({ storage: storage });
+const BUCKET_NAME = "uma-34";
 
 // ==========================
-// ROUTE: /home (Upload + List)
+// MULTER S3 STORAGE
 // ==========================
-app.get("/home", (req, res) => {
-    let files = [];
+const upload = multer({
+    storage: multerS3({
+        s3: s3,
+        bucket: BUCKET_NAME,
+        acl: "public-read", // optional
+        key: function (req, file, cb) {
+            cb(null, Date.now() + "-" + file.originalname);
+        }
+    })
+});
 
+// ==========================
+// ROUTE: HOME (Upload + List)
+// ==========================
+app.get("/home", async (req, res) => {
     try {
-        files = fs.readdirSync(uploadDir);
-    } catch (err) {
-        console.log("Error reading files:", err);
-    }
+        const command = new ListObjectsV2Command({
+            Bucket: BUCKET_NAME
+        });
 
-    res.render("home", { files });
+        const data = await s3.send(command);
+
+        const files = data.Contents 
+            ? data.Contents.map(file => file.Key) 
+            : [];
+
+        res.render("home", { files });
+
+    } catch (error) {
+        console.log(error);
+        res.send("Error loading files");
+    }
 });
 
-// Upload file
+// Upload to S3
 app.post("/upload", upload.single("file"), (req, res) => {
     res.redirect("/home");
 });
 
 // ==========================
-// ROUTE: /download (List + Download)
+// ROUTE: DOWNLOAD PAGE
 // ==========================
-app.get("/download", (req, res) => {
-    let files = [];
-
+app.get("/download", async (req, res) => {
     try {
-        files = fs.readdirSync(uploadDir);
-    } catch (err) {
-        console.log("Error reading files:", err);
-    }
+        const command = new ListObjectsV2Command({
+            Bucket: BUCKET_NAME
+        });
 
-    res.render("download", { files });
-});
+        const data = await s3.send(command);
 
-// Download specific file
-app.get("/download/:filename", (req, res) => {
-    const filePath = path.join(uploadDir, req.params.filename);
+        const files = data.Contents 
+            ? data.Contents.map(file => file.Key) 
+            : [];
 
-    if (fs.existsSync(filePath)) {
-        res.download(filePath);
-    } else {
-        res.send("File not found");
+        res.render("download", { files });
+
+    } catch (error) {
+        console.log(error);
+        res.send("Error loading files");
     }
 });
 
 // ==========================
-// Start Server
+// SECURE DOWNLOAD (Signed URL)
 // ==========================
-const PORT = 3000;
+app.get("/download/:filename", async (req, res) => {
+    try {
+        const command = new GetObjectCommand({
+            Bucket: BUCKET_NAME,
+            Key: req.params.filename
+        });
 
-app.listen(PORT, () => {
-    console.log(`Server running on http://localhost:${PORT}/home`);
+        const url = await getSignedUrl(s3, command, { expiresIn: 60 });
+
+        res.redirect(url);
+
+    } catch (error) {
+        console.log(error);
+        res.send("Error downloading file");
+    }
+});
+
+// ==========================
+// START SERVER
+// ==========================
+app.listen(3000, () => {
+    console.log("Server running on http://localhost:3000/home");
 });
